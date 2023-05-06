@@ -21,6 +21,8 @@ message DeleteRequest {
 message GetResponse {
 	string value = 1;
 	bool was_found = 2;
+	bool redirect = 3;
+	string redirect_node_name = 4;
 }
 
 message SetResponse {}
