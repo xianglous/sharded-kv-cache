@@ -2,18 +2,15 @@ package kv
 
 import (
 	"sync"
-	"cs426.yale.edu/final/raft"
 	"time"
-	"log"
+
+	"cs426.yale.edu/final/raft"
 )
 
-const Debug = 0
-
-func DPrintf(format string, a ...interface{}) (n int, err error) {
-	if Debug > 0 {
-		log.Printf(format, a...)
-	}
-	return
+type kvCommand struct {
+	Op    string
+	Key   string
+	Value string
 }
 
 type kvObject struct {
@@ -34,7 +31,6 @@ func MakeKvShard() *kvShard {
 	return &shard
 }
 
-
 func (shard *kvShard) ttlMonitor() {
 	for {
 		select {
@@ -46,6 +42,38 @@ func (shard *kvShard) ttlMonitor() {
 	}
 }
 
+func (shard *kvShard) Get(key string) (*kvObject, bool) {
+	shard.mu.RLock()
+	defer shard.mu.RUnlock()
+	obj, ok := shard.data[key]
+	if !ok || HasExpired(obj) {
+		return nil, false
+	}
+	return obj, ok
+}
+
+func (shard *kvShard) Set(key string, value string, ttlMs int64) {
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+	shard.data[key] = &kvObject{
+		value:       value,
+		stored_time: time.Now(),
+		ttlMs:       ttlMs,
+	}
+}
+
+func (shard *kvShard) Delete(key string) {
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+	delete(shard.data, key)
+}
+
+func (shard *kvShard) Data() map[string]*kvObject {
+	shard.mu.RLock()
+	defer shard.mu.RUnlock()
+	return shard.data
+}
+
 type KVServer struct {
 	mu      sync.Mutex
 	me      int
@@ -54,10 +82,10 @@ type KVServer struct {
 	stopCh  chan struct{}
 
 	// TODO: deal with the case when there are way too many logs
-	shardMap   *ShardMap
+	shardMap    *ShardMap
 	storage     map[string]*kvObject
 	ttlShutdown chan bool
-	shards map[int32]*kvShard
+	shards      map[int32]*kvShard
 
 	persister      *raft.Persister
 	lastApplyIndex int
@@ -67,4 +95,3 @@ type KVServer struct {
 	lockEnd   time.Time
 	lockName  string
 }
-
