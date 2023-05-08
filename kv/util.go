@@ -3,7 +3,6 @@ package kv
 import (
 	"hash/fnv"
 	"log"
-	"time"
 )
 
 /// This file can be used for any common code you want to define and separate
@@ -22,8 +21,4 @@ func GetShardForKey(key string, numShards int) int {
 	hasher := fnv.New32()
 	hasher.Write([]byte(key))
 	return int(hasher.Sum32())%numShards + 1
-}
-
-func HasExpired(obj *kvObject) bool {
-	return time.Since(obj.stored_time).Milliseconds() >= obj.ttlMs
 }

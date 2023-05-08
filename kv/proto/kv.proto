@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package kv;
 
-option go_package = "cs426.yale.edu/final/lab4/kv/proto";
+option go_package = "cs426.yale.edu/final/kv/proto";
 
 message GetRequest {
 	string key = 1;
