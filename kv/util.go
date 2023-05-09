@@ -3,6 +3,10 @@ package kv
 import (
 	"hash/fnv"
 	"log"
+
+	"cs426.yale.edu/final/kv/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 /// This file can be used for any common code you want to define and separate
@@ -21,4 +25,15 @@ func GetShardForKey(key string, numShards int) int {
 	hasher := fnv.New32()
 	hasher.Write([]byte(key))
 	return int(hasher.Sum32())%numShards + 1
+}
+
+func MakeConnection(addr string) (proto.KvClient, error) {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	channel, err := grpc.Dial(addr, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return proto.NewKvClient(channel), nil
 }

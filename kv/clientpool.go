@@ -7,20 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"cs426.yale.edu/final/kv/proto"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
-
-func makeConnection(addr string) (proto.KvClient, error) {
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-
-	channel, err := grpc.Dial(addr, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return proto.NewKvClient(channel), nil
-}
 
 /*
  * ClientPool is the main interface you will be using to call into the KvServers,
@@ -80,7 +67,7 @@ func (pool *GrpcClientPool) GetClient(nodeName string) (proto.KvClient, error) {
 
 	// Otherwise create the client: gRPC expects an address of the form "ip:port"
 	address := fmt.Sprintf("%s:%d", nodeInfo.Address, nodeInfo.Port)
-	client, err := makeConnection(address)
+	client, err := MakeConnection(address)
 	if err != nil {
 		logrus.WithField("node", nodeName).Debugf("failed to connect to node %s (%s): %q", nodeName, address, err)
 		return nil, err

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	kvpb "cs426.yale.edu/lab4/kv/proto"
+	kvpb "cs426.yale.edu/final/kv/proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

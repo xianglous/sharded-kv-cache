@@ -5,11 +5,9 @@ import (
 	"log"
 	"math/rand"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	"cs426.yale.edu/final/kv/proto"
-	"cs426.yale.edu/final/labrpc"
-	"cs426.yale.edu/final/raft"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,133 +15,151 @@ import (
 
 type kvShard struct {
 	// data      map[string]*kvObject
-	mu        sync.RWMutex
-	shutCh    chan bool
-	persister raft.Persister
-	nodes     []*KvShardNode
-	leader    int
+	mu sync.RWMutex
+	// shutCh   chan bool
+	nodePool NodePool
+	leader   int64
 }
 
-func MakeKvShard(clusterSize int) *kvShard {
+func MakeKvShard(nodesInfo []NodeInfo) *kvShard {
+	nodePool := MakeNodePool(nodesInfo)
 	shard := kvShard{
 		// data:      make(map[string]*kvObject),
-		shutCh:    make(chan bool),
-		persister: nil,
-		nodes:     make([]*KvShardNode, 0),
-		leader:    0}
-	ends := make([]*labrpc.ClientEnd, clusterSize)
-	for i := 0; i < clusterSize; i++ {
-		if shard.persister == nil {
-			shard.persister = raft.MakePersister()
-		} else {
-			shard.persister = shard.persister.copy()
-		}
-		shard.nodes = append(shard.nodes, MakeKvShardNode(ends, i, shard.persister))
-	}
-	go shard.monitor()
+		// shutCh:   make(chan bool),
+		nodePool: &nodePool,
+		leader:   0}
+	// go shard.monitor()
 	return &shard
 }
 
-func (shard *kvShard) updateLeader() {
-	shard.mu.Lock()
-	defer shard.mu.Unlock()
-	index := rand.Intn(len(shard.nodes))
-	for i := 0; i < len(shard.nodes); i++ {
-		idx := (i + index) % len(shard.nodes)
-		if shard.nodes[idx].IsLeader() {
-			shard.leader = idx
-			return
-		}
-	}
-	shard.leader = index
-	return
-}
+// func (shard *kvShard) updateLeader() {
+// 	shard.mu.Lock()
+// 	defer shard.mu.Unlock()
+// 	index := rand.Intn(len(shard.nodes))
+// 	for i := 0; i < len(shard.nodes); i++ {
+// 		idx := (i + index) % len(shard.nodes)
+// 		if shard.nodes[idx].IsLeader() {
+// 			shard.leader = idx
+// 			return
+// 		}
+// 	}
+// 	shard.leader = index
+// 	return
+// }
 
-func (shard *kvShard) monitor() {
-	for {
-		select {
-		case <-shard.shutCh:
-			for node := range shard.nodes {
-				node.Kill()
-			}
-			return
-		case <-time.After(time.Second * 10):
-			shard.updateLeader()
-		}
-	}
-}
+// func (shard *kvShard) monitor() {
+// 	for {
+// 		select {
+// 		case <-shard.shutCh:
+// 			for node := range shard.nodes {
+// 				node.Kill()
+// 			}
+// 			return
+// 		case <-time.After(time.Second * 10):
+// 			shard.updateLeader()
+// 		}
+// 	}
+// }
 
 func (shard *kvShard) Get(
 	ctx context.Context,
 	request *proto.GetRequest,
-) (*proto.GetResponse, error) {
-	res, err := shard.nodes[shard.leader].Get(ctx, request)
-	if e, ok := status.FromError(err); ok {
-		switch e.Code() {
-		case codes.PermissionDenied: // not leader
-			shard.updateLeader()
-			return shard.nodes[shard.leader].Get(ctx, request)
+) (res *proto.GetResponse, err error) {
+	leader := atomic.LoadInt64(&shard.leader)
+	for i := 0; i < shard.nodePool.Size(); i++ {
+		idx := (leader + int64(i)) % int64(shard.nodePool.Size())
+		client, err := shard.nodePool.GetClient(int(idx))
+		if err == nil {
+			res, err = client.Get(ctx, request)
+			if err == nil {
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return res, nil
+			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return &proto.GetResponse{}, err
+			}
 		}
 	}
-	return nil, err
+	return &proto.GetResponse{}, err
 }
 
 func (shard *kvShard) Set(
 	ctx context.Context,
 	request *proto.SetRequest,
-) (*proto.SetResponse, error) {
-	res, err := shard.nodes[shard.leader].Set(ctx, request)
-	if e, ok := status.FromError(err); ok {
-		switch e.Code() {
-		case codes.PermissionDenied: // not leader
-			shard.updateLeader()
-			return shard.nodes[shard.leader].Set(ctx, request)
+) (res *proto.SetResponse, err error) {
+	leader := atomic.LoadInt64(&shard.leader)
+	for i := 0; i < shard.nodePool.Size(); i++ {
+		idx := (leader + int64(i)) % int64(shard.nodePool.Size())
+		client, err := shard.nodePool.GetClient(int(idx))
+		// logrus.Println(err, idx)
+		if err == nil {
+			res, err = client.Set(ctx, request)
+			logrus.Println(err)
+			if err == nil {
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return res, nil
+			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return &proto.SetResponse{}, err
+			}
 		}
 	}
-	return nil, err
+	return &proto.SetResponse{}, err
 }
 
 func (shard *kvShard) Delete(
 	ctx context.Context,
 	request *proto.DeleteRequest,
-) (*proto.DeleteResponse, error) {
-	res, err := shard.nodes[shard.leader].Delete(ctx, request)
-	if e, ok := status.FromError(err); ok {
-		switch e.Code() {
-		case codes.PermissionDenied: // not leader
-			shard.updateLeader()
-			return shard.nodes[shard.leader].Delete(ctx, request)
+) (res *proto.DeleteResponse, err error) {
+	leader := atomic.LoadInt64(&shard.leader)
+	for i := 0; i < shard.nodePool.Size(); i++ {
+		idx := (leader + int64(i)) % int64(shard.nodePool.Size())
+		client, err := shard.nodePool.GetClient(int(idx))
+		if err == nil {
+			res, err = client.Delete(ctx, request)
+			if err == nil {
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return res, nil
+			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return &proto.DeleteResponse{}, err
+			}
 		}
 	}
-	return nil, err
+	return &proto.DeleteResponse{}, err
 }
 
 func (shard *kvShard) GetShardContents(
 	ctx context.Context,
 	request *proto.GetShardContentsRequest,
-) (*proto.GetShardContentsResponse, error) {
-	res, err := shard.nodes[shard.leader].GetShardContents(ctx, request)
-	if e, ok := status.FromError(err); ok {
-		switch e.Code() {
-		case codes.PermissionDenied: // not leader
-			shard.updateLeader()
-			return shard.nodes[shard.leader].GetShardContents(ctx, request)
+) (res *proto.GetShardContentsResponse, err error) {
+	leader := atomic.LoadInt64(&shard.leader)
+	for i := 0; i < shard.nodePool.Size(); i++ {
+		idx := (leader + int64(i)) % int64(shard.nodePool.Size())
+		client, err := shard.nodePool.GetClient(int(idx))
+		if err == nil {
+			res, err = client.GetShardContents(ctx, request)
+			if err == nil {
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return res, nil
+			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
+				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				return &proto.GetShardContentsResponse{}, err
+			}
 		}
 	}
-	return nil, err
-}
-
-func (shard *kvShard) Shutdown() {
-	shard.shutCh <- true
+	return &proto.GetShardContentsResponse{}, err
 }
 
 type KvServerImpl struct {
+	proto.UnimplementedKvServer
 	mu       sync.RWMutex
 	stopCh   chan struct{}
 	nodeName string
 
 	// TODO: deal with the case when there are way too many logs
 	clientPool ClientPool
+	nodesInfo  map[int32][]NodeInfo
 	shardMap   *ShardMap
 	listener   *ShardMapListener
 	shards     map[int32]*kvShard
@@ -216,7 +232,7 @@ func (server *KvServerImpl) handleShardMapUpdate() {
 	}
 
 	for shard := range removed {
-		server.shards[shard].Shutdown()
+		// server.shards[shard].Shutdown()
 		delete(server.shards, shard)
 	}
 
@@ -225,7 +241,7 @@ func (server *KvServerImpl) handleShardMapUpdate() {
 	}
 	resCh := make(chan *proto.GetShardContentsResponse, len(added))
 	for shard := range added {
-		server.shards[shard] = MakeKvShard()
+		server.shards[shard] = MakeKvShard(server.nodesInfo[shard])
 		go func(shard int32, nodes []string) {
 			res, _ := server.fetchShardContent(nodes, shard)
 			resCh <- res
@@ -241,7 +257,10 @@ func (server *KvServerImpl) handleShardMapUpdate() {
 	for _, res := range results {
 		for _, shardVal := range res.Values {
 			shard := GetShardForKey(shardVal.Key, server.shardMap.NumShards())
-			server.shards[int32(shard)].Set(shardVal.Key, shardVal.Value, shardVal.TtlMsRemaining)
+			server.shards[int32(shard)].Set(context.Background(), &proto.SetRequest{
+				Key:   shardVal.Key,
+				Value: shardVal.Value,
+				TtlMs: shardVal.TtlMsRemaining})
 		}
 	}
 }
@@ -258,13 +277,14 @@ func (server *KvServerImpl) shardMapListenLoop() {
 	}
 }
 
-func MakeKvServer(nodeName string, shardMap *ShardMap, clientPool ClientPool) *KvServerImpl {
+func MakeKvServer(nodeName string, shardMap *ShardMap, clientPool ClientPool, nodesInfo map[int32][]NodeInfo) *KvServerImpl {
 	listener := shardMap.MakeListener()
 	server := KvServerImpl{
 		nodeName:   nodeName,
 		shardMap:   shardMap,
 		listener:   &listener,
 		clientPool: clientPool,
+		nodesInfo:  nodesInfo,
 		shutdown:   make(chan struct{}),
 		shards:     make(map[int32]*kvShard),
 	}
@@ -278,9 +298,9 @@ func MakeKvServer(nodeName string, shardMap *ShardMap, clientPool ClientPool) *K
 func (server *KvServerImpl) Shutdown() {
 	server.shutdown <- struct{}{}
 	server.listener.Close()
-	for _, shard := range server.shards {
-		shard.Shutdown()
-	}
+	// for _, shard := range server.shards {
+	// 	shard.Shutdown()
+	// }
 }
 
 func (server *KvServerImpl) Get(

@@ -8,40 +8,48 @@ import (
 	"cs426.yale.edu/final/kv/proto"
 	"cs426.yale.edu/final/labrpc"
 	"cs426.yale.edu/final/raft"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-type kvCommand struct {
+const NotLeader codes.Code = 105
+
+type KvCommand struct {
 	Op  string
 	Key string
-	Obj *kvObject
+	Obj *KvObject
 }
 
-type kvObject struct {
+type KvObject struct {
 	value       string
 	stored_time time.Time
 	ttlMs       int64
 }
 
 type KvShardNode struct {
-	data    map[string]*kvObject
+	proto.UnimplementedKvServer
+	data    map[string]*KvObject
 	mu      sync.RWMutex
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 	shutCh  chan bool
 }
 
-func MakeKvShardNode(peers []*labrpc.ClientEnd, me int,
+func MakeKvShardNode(nodePool NodePool, peers []*labrpc.ClientEnd, me int,
 	persister *raft.Persister) *KvShardNode {
 	applyCh := make(chan raft.ApplyMsg, 1000)
 	node := KvShardNode{
-		data:    make(map[string]*kvObject),
+		data:    make(map[string]*KvObject),
 		shutCh:  make(chan bool),
 		applyCh: applyCh,
 		rf:      raft.Make(peers, me, persister, applyCh)}
 	go node.ttlMonitor()
 	return &node
+}
+
+func (node *KvShardNode) GetRaft() *raft.Raft {
+	return node.rf
 }
 
 func (node *KvShardNode) cleanup() {
@@ -65,8 +73,13 @@ func (node *KvShardNode) ttlMonitor() {
 			node.rf.Kill()
 			return
 		case msg := <-node.applyCh:
+			logrus.Println(msg)
 			if msg.CommandValid {
-				node.execute(msg.Command.Op, msg.Command.Key, msg.Command.Obj)
+				cmd, ok := msg.Command.(KvCommand)
+				// logrus.Println(cmd.Op)
+				if ok {
+					node.execute(cmd.Op, cmd.Key, cmd.Obj)
+				}
 			}
 		case <-time.After(time.Second * 1):
 			node.cleanup()
@@ -74,7 +87,7 @@ func (node *KvShardNode) ttlMonitor() {
 	}
 }
 
-func hasExpired(obj *kvObject) bool {
+func hasExpired(obj *KvObject) bool {
 	return time.Since(obj.stored_time).Milliseconds() >= obj.ttlMs
 }
 
@@ -86,11 +99,11 @@ func (node *KvShardNode) Get(
 	defer node.mu.RUnlock()
 
 	if !node.rf.IsLeader() {
-		return nil, status.Error(codes.PermissionDenied, "node is not leader")
+		return &proto.GetResponse{}, status.Error(NotLeader, "node is not leader")
 	}
 
 	if request.Key == "" {
-		return nil, status.Error(codes.InvalidArgument, "key cannot be empty")
+		return &proto.GetResponse{}, status.Error(codes.InvalidArgument, "key cannot be empty")
 	}
 
 	obj, ok := node.data[request.Key]
@@ -100,7 +113,7 @@ func (node *KvShardNode) Get(
 			WasFound: false,
 		}, nil
 	} else if hasExpired(obj) {
-		return nil, status.Error(codes.DeadlineExceeded, "key expired")
+		return &proto.GetResponse{}, status.Error(codes.DeadlineExceeded, "key expired")
 	}
 	return &proto.GetResponse{
 		Value:    obj.value,
@@ -116,20 +129,20 @@ func (node *KvShardNode) Set(
 	defer node.mu.Unlock()
 
 	if request.Key == "" {
-		return nil, status.Error(codes.InvalidArgument, "key cannot be empty")
+		return &proto.SetResponse{}, status.Error(codes.InvalidArgument, "key cannot be empty")
 	}
-
-	_, _, isLeader := node.rf.Start(&kvCommand{
+	// logrus.Println(request.Key, request.Value)
+	_, _, isLeader := node.rf.Start(&KvCommand{
 		Op:  "Set",
 		Key: request.Key,
-		Obj: &kvObject{
+		Obj: &KvObject{
 			value:       request.Value,
 			stored_time: time.Now(),
 			ttlMs:       request.TtlMs,
 		},
 	})
 	if !isLeader {
-		return nil, status.Error(codes.PermissionDenied, "node is not leader")
+		return &proto.SetResponse{}, status.Error(NotLeader, "node is not leader")
 	}
 	return &proto.SetResponse{}, nil
 }
@@ -142,16 +155,16 @@ func (node *KvShardNode) Delete(
 	defer node.mu.Unlock()
 
 	if request.Key == "" {
-		return nil, status.Error(codes.InvalidArgument, "key cannot be empty")
+		return &proto.DeleteResponse{}, status.Error(codes.InvalidArgument, "key cannot be empty")
 	}
 
-	_, _, isLeader := node.rf.Start(&kvCommand{
+	_, _, isLeader := node.rf.Start(&KvCommand{
 		Op:  "Delete",
-		Key: key,
+		Key: request.Key,
 		Obj: nil,
 	})
 	if !isLeader {
-		return nil, status.Error(codes.PermissionDenied, "node is not leader")
+		return &proto.DeleteResponse{}, status.Error(NotLeader, "node is not leader")
 	}
 	return &proto.DeleteResponse{}, nil
 }
@@ -163,7 +176,7 @@ func (node *KvShardNode) GetShardContents(
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	if !node.rf.IsLeader() {
-		return nil, status.Error(codes.PermissionDenied, "node is not leader")
+		return &proto.GetShardContentsResponse{}, status.Error(NotLeader, "node is not leader")
 	}
 
 	res := &proto.GetShardContentsResponse{
@@ -182,7 +195,7 @@ func (node *KvShardNode) GetShardContents(
 	return res, nil
 }
 
-func (node *KvShardNode) execute(op string, key string, obj *kvObject) {
+func (node *KvShardNode) execute(op string, key string, obj *KvObject) {
 	node.mu.Lock()
 	defer node.mu.Unlock()
 	if op == "Set" {
@@ -196,6 +209,6 @@ func (node *KvShardNode) Kill() {
 	node.shutCh <- true
 }
 
-func (node *KvShardNode) IsLeader() {
+func (node *KvShardNode) IsLeader() bool {
 	return node.rf.IsLeader()
 }

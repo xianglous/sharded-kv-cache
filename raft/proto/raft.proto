@@ -1,11 +1,38 @@
 syntax = "proto3";
 
-package kv;
+package raft;
 
-option go_package = "cs426.yale.edu/final/kv/proto";
+option go_package = "cs426.yale.edu/final/raft/proto";
 
-message GetRequest {
-	string key = 1;
+message VoteRequest {
+	int64 term
+	int64 candidate_id
+	int64 last_log_index 
+    int64 last_log_term
+}
+
+message VoteReply {
+    int64 term
+	bool vote_granted
+}
+
+message KvCommand {
+    
+}
+
+message LogEntry {
+	int64 term   
+	Command interface{}
+
+}
+
+message AppendEntriesRequest {
+	int64 term
+	int64 leader_id     
+	int64 prev_log_index 
+	int64 prev_log_term  
+	repeated LogEntry entries
+	LeaderCommit int
 }
 
 message SetRequest {
