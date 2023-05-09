@@ -12,9 +12,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"cs426.yale.edu/lab4/checker"
-	"cs426.yale.edu/lab4/kv"
-	"cs426.yale.edu/lab4/logging"
+	"cs426.yale.edu/final/checker"
+	"cs426.yale.edu/final/kv"
+	"cs426.yale.edu/final/logging"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
 )
@@ -28,7 +28,8 @@ import (
 // to see how high it can go before erroring.
 //
 // Typical usage for Part D will just be to run:
-//    go run cmd/stress/tester.go --shardmap shardmaps/$file.json
+//
+//	go run cmd/stress/tester.go --shardmap shardmaps/$file.json
 //
 // This will run with a default of 100 get QPS and 30 set QPS. Your servers
 // should be able to handle much more load, but we are not grading on performance

@@ -36,3 +36,28 @@ go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json"
 go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" delete abc
 go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" get abc
 ```
+
+You can also run the same stress checker as in Lab4
+
+## Results
+We tested our implementation on single node single shard and single raft node and the same with triple raft nodes. The results are following:
+
+Single Raft Node:
+```
+Stress test completed!
+Get requests: 6020/6020 succeeded = 100.000000% success rate
+Set requests: 1820/1820 succeeded = 100.000000% success rate
+Correct responses: 5890/6018 = 97.873048%
+Total requests: 7840 = 130.663446 QPS
+``` 
+
+3 Raft Nodes:
+```
+Stress test completed!
+Get requests: 3226/6020 succeeded = 53.588040% success rate
+Set requests: 1820/1820 succeeded = 100.000000% success rate
+Correct responses: 3225/3225 = 100.000000%
+Total requests: 7840 = 130.659757 QPS
+```
+
+We can see that the performance is not desirable. The problem may be caused by leader being front-run by another new leader, and the new leader receives a Set operation before the old leader return the Get operation to the user. Such problem was discussed in the Raft paper. Also, not being able to run gRPC for Raft is another drawback for our implementation. We used the similar labrpc from lab3 for Raft internel communication because we did not have enough time to implement another gRPC protocol.

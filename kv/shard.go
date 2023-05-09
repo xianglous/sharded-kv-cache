@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"cs426.yale.edu/final/kv/proto"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/status"
 )
 
@@ -99,7 +98,7 @@ func (shard *kvShard) Set(
 			res, err = client.Set(ctx, request)
 			if err == nil {
 				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
-				logrus.Println("Leader: ", leader)
+				// logrus.Println("Leader: ", leader)
 				return res, nil
 			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
 				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)

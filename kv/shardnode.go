@@ -9,7 +9,6 @@ import (
 	"cs426.yale.edu/final/kv/proto"
 	"cs426.yale.edu/final/labrpc"
 	"cs426.yale.edu/final/raft"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -76,7 +75,7 @@ func (node *KvShardNode) ttlMonitor() {
 		case msg := <-node.applyCh:
 			if msg.CommandValid {
 				cmd, ok := msg.Command.(KvCommand)
-				logrus.Println(cmd)
+				// logrus.Println(cmd)
 				if ok {
 					node.execute(cmd.Op, cmd.Key, cmd.Obj)
 				}
