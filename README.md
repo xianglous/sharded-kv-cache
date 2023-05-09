@@ -63,3 +63,5 @@ Total requests: 7840 = 130.659757 QPS
 We can see that the performance is not desirable. The problem may be caused by leader being front-run by another new leader, and the new leader receives a Set operation before the old leader return the Get operation to the user. Such problem was discussed in the Raft paper. Also, election can make the service totally unavailable because no leader can reply to the user.
 
 Another problem is not being able to run gRPC for Raft is another drawback for our implementation. We used the similar labrpc from lab3 for Raft internel communication because we did not have enough time to implement another gRPC protocol.
+
+[Demo]("https://drive.google.com/file/d/1qprDM6bBY6_jHGAGTEahu4dbIvXNUXhB/view?usp=sharing")
