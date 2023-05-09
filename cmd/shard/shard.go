@@ -31,9 +31,9 @@ import (
 // a bunch of "nodes" as separate processes locally on your machine.
 
 var (
-	shardId   = flag.Int("shard_id", -1, "ShardID")
-	numNodes  = flag.Int("num_nodes", 1, "Number of nodes in the cluster")
-	port      = flag.Int("port", 9000, "Port for the node")
+	shardId  = flag.Int("shard_id", -1, "ShardID")
+	numNodes = flag.Int("num_nodes", 1, "Number of nodes in the cluster")
+	// port      = flag.Int("port", 9000, "Port for the node")
 	configDir = flag.String("config_dir", "", "Config directory for shard Raft cluster")
 )
 
@@ -134,9 +134,9 @@ func main() {
 		logrus.Fatal("--num_nodes must be a positive odd number")
 	}
 
-	if *port < 0 || *port > 65536 {
-		logrus.Fatal("--port invalid")
-	}
+	// if *port < 0 || *port > 65536 {
+	// 	logrus.Fatal("--port invalid")
+	// }
 
 	var shardState *kv.ShardState
 	var err error

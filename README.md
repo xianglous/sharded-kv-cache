@@ -1,14 +1,38 @@
 # sharded-kv-cache
 
-## TODO (option1): 
-- [ ] Decide on new Get, Set, Delete grpc APIs. 
-- [ ] Write new shardkv server, which is a wrapper of lab3 raft server.
-- [ ] The manipulations of shards are done through rf.applyLogs() ? 
-- [ ] how to deal with TTLs when a server goes down and come back up after ttl is expired =>  self-clean? 
-- [ ] how to implement "copy data for a live shard to another node"? Communication between nodes should be lab3 RPC, not grpc. 
-- [ ] worry about shardmaplistener later
+## Group Contribution
+Xianglong Li: Designed the structure for the service (RAFT at shard level). Implemented ShardNode to comply with RAFT consensus and replicate log and execute Get, Set, and Delete operations. Implemented NodePool to conduct gRPC communication between Kv and Shard.
 
-## TODO (option2):
-- [ ] Write new shardkv server, which is a wrapper of lab3 raft server.
-- [ ] Write new shardkv client, which talks with shardkv server in lab3 rpc. 
-- [ ] Extend delete, ttl, shardmaplistener, clientpool??? 
+Junyan Zhang: Implemented new Get Set and Delete for the server. Wrote execution scripts for starting shard and server. Debugged code with custom shard configurations.
+
+## Project Structure
+The project directory has three major components:
+
+### Kv
+The `kv` package defines the key-value store service. In addition to the old code from Lab4, the folder has implementation of the shard (`shardnode.go` and `shard.go`), server (`server.go`), nodepool (`nodepool.go`) and (`client.go`). 
+
+### Raft
+`raft.go` contains the implementation of RAFT consensus as described in Lab3. We did not add too many new implementation to it as we want to use it as a versatile library instead of dedicating it to this project.
+
+### Cmd
+The `cmd` package contains executable scripts to start the shard cluster (`cmd/shard/shard.go`), kv server (`cmd/server/server.go`) and make request to the service (`cmd/client/client.go`).
+
+To start the service, first run the following command
+```
+go run cmd/shard/shard.go --config_dir="config/5-shard-3-node/" --num_nodes 3 --shard_id 1
+```
+This command start a shard cluster with shard_id 1 and 3 nodes in the Raft consensus. Its configuration file is stored in the folder config/5-shard-3-node/. You can start multiple shards using the similar command.
+
+After setting up the shards, run the following command
+```
+go run cmd/server/server.go --shardmap="shardmaps/single-node-single-shard.json" --config_dir="config/5-shard-3-node" --node="n1"
+```
+Which start a KV node with name "n1" and having shard map from shardmaps/single-node-single-shard.json. The node will get the shard information (address, port, ids) from the shard directory config/5-shard-3-node
+
+Then you can run the following commands to test the service
+```
+go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" set abc 234 5000
+go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" get abc
+go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" delete abc
+go run cmd/client/client.go --shardmap="shardmaps/single-node-single-shard.json" get abc
+```
