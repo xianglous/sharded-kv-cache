@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"encoding/gob"
 	"sync"
 	"time"
 
@@ -22,9 +23,9 @@ type KvCommand struct {
 }
 
 type KvObject struct {
-	value       string
-	stored_time time.Time
-	ttlMs       int64
+	Value      string
+	StoredTime time.Time
+	TtlMs      int64
 }
 
 type KvShardNode struct {
@@ -73,10 +74,9 @@ func (node *KvShardNode) ttlMonitor() {
 			node.rf.Kill()
 			return
 		case msg := <-node.applyCh:
-			logrus.Println(msg)
 			if msg.CommandValid {
 				cmd, ok := msg.Command.(KvCommand)
-				// logrus.Println(cmd.Op)
+				logrus.Println(cmd)
 				if ok {
 					node.execute(cmd.Op, cmd.Key, cmd.Obj)
 				}
@@ -88,7 +88,7 @@ func (node *KvShardNode) ttlMonitor() {
 }
 
 func hasExpired(obj *KvObject) bool {
-	return time.Since(obj.stored_time).Milliseconds() >= obj.ttlMs
+	return time.Since(obj.StoredTime).Milliseconds() >= obj.TtlMs
 }
 
 func (node *KvShardNode) Get(
@@ -116,7 +116,7 @@ func (node *KvShardNode) Get(
 		return &proto.GetResponse{}, status.Error(codes.DeadlineExceeded, "key expired")
 	}
 	return &proto.GetResponse{
-		Value:    obj.value,
+		Value:    obj.Value,
 		WasFound: true,
 	}, nil
 }
@@ -131,16 +131,17 @@ func (node *KvShardNode) Set(
 	if request.Key == "" {
 		return &proto.SetResponse{}, status.Error(codes.InvalidArgument, "key cannot be empty")
 	}
-	// logrus.Println(request.Key, request.Value)
-	_, _, isLeader := node.rf.Start(&KvCommand{
+	cmd := KvCommand{
 		Op:  "Set",
 		Key: request.Key,
 		Obj: &KvObject{
-			value:       request.Value,
-			stored_time: time.Now(),
-			ttlMs:       request.TtlMs,
+			Value:      request.Value,
+			StoredTime: time.Now(),
+			TtlMs:      request.TtlMs,
 		},
-	})
+	}
+	gob.Register(cmd)
+	_, _, isLeader := node.rf.Start(cmd)
 	if !isLeader {
 		return &proto.SetResponse{}, status.Error(NotLeader, "node is not leader")
 	}
@@ -157,12 +158,13 @@ func (node *KvShardNode) Delete(
 	if request.Key == "" {
 		return &proto.DeleteResponse{}, status.Error(codes.InvalidArgument, "key cannot be empty")
 	}
-
-	_, _, isLeader := node.rf.Start(&KvCommand{
+	cmd := KvCommand{
 		Op:  "Delete",
 		Key: request.Key,
 		Obj: nil,
-	})
+	}
+	gob.Register(cmd)
+	_, _, isLeader := node.rf.Start(cmd)
 	if !isLeader {
 		return &proto.DeleteResponse{}, status.Error(NotLeader, "node is not leader")
 	}
@@ -187,8 +189,8 @@ func (node *KvShardNode) GetShardContents(
 		if !hasExpired(obj) {
 			res.Values = append(res.Values, &proto.GetShardValue{
 				Key:            key,
-				Value:          obj.value,
-				TtlMsRemaining: obj.ttlMs - time.Since(obj.stored_time).Milliseconds(),
+				Value:          obj.Value,
+				TtlMsRemaining: obj.TtlMs - time.Since(obj.StoredTime).Milliseconds(),
 			})
 		}
 	}

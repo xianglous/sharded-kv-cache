@@ -14,8 +14,8 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int
-	Success bool
+	Term     int
+	Success  bool
 	NexIndex int
 }
 
@@ -30,7 +30,6 @@ func (rf *Raft) resetHeartbeatTimer(peeridx int) {
 	rf.appendEntriesTimers[peeridx].Stop()
 	rf.appendEntriesTimers[peeridx].Reset(HeartbeatTimeout)
 }
-
 
 func (rf *Raft) makeAppendEntriesArgs(peeridx int) AppendEntriesArgs {
 	// Make the logentries to append
@@ -48,7 +47,7 @@ func (rf *Raft) makeAppendEntriesArgs(peeridx int) AppendEntriesArgs {
 	} else {
 		logEntries = append(logEntries, rf.logEntries[rf.getIdxByLogIndex(nextIdx):]...)
 		prevLogIndex = nextIdx - 1
-		
+
 		prevLogTerm = rf.getLogEntryByIndex(prevLogIndex).Term
 
 	}
@@ -163,7 +162,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.resetElectionTimer()
 
 	_, lastLogIndex := rf.getLastLogTermIndex()
-	if args.PrevLogIndex > lastLogIndex{ // Missing logs in the middle
+	if args.PrevLogIndex > lastLogIndex { // Missing logs in the middle
 		rf.delog("AppendEntries: Missing logs in the middle, args.PrevLogIndex=%v, lastLogIndex=%v", args.PrevLogIndex, lastLogIndex)
 		reply.Success = false
 		reply.NexIndex = lastLogIndex + 1
@@ -206,7 +205,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.signalApplyCh <- struct{}{}
 	}
 
-
 	rf.persist()
 	rf.delog("Handle AppendEntries: reply=%+v", reply)
 	rf.unlock("AppendEntries")
@@ -228,7 +226,7 @@ func (rf *Raft) updateCommitIndex() {
 				}
 			}
 		}
-		if rf.commitIndex != i{
+		if rf.commitIndex != i {
 			break
 		}
 	}
@@ -240,7 +238,7 @@ func (rf *Raft) updateCommitIndex() {
 
 func (rf *Raft) isArgsEntriesOutOfOrder(args *AppendEntriesArgs) bool {
 	lastLogTerm, lastLogIndex := rf.getLastLogTermIndex()
-	if args.PrevLogIndex + len(args.Entries) < lastLogIndex && lastLogTerm == args.Term {
+	if args.PrevLogIndex+len(args.Entries) < lastLogIndex && lastLogTerm == args.Term {
 		return true
 	}
 	return false

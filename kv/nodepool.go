@@ -12,16 +12,7 @@ import (
 )
 
 /*
- * NodePool is the main interface you will be using to call into the KvServers,
- * both from the client (Kv in client.go) and from the servers (when you implement
- * shard copying).
- *
- * Clients are cached by nodeName. We assume that the connection information (Address/Port)
- * will never change for a given nodeName.
- *
- * It is important to use NodePool::GetClient() instead of your own logic
- * because unit-tests will use a mocked version of NodePool to change behaviors, test with
- * failure injection, etc.
+ * NodePool is the main interface for server nodes to conduct gRPC with raft nodes
  */
 type NodePool interface {
 	/*

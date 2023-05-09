@@ -15,7 +15,7 @@ import (
 
 type kvShard struct {
 	// data      map[string]*kvObject
-	mu sync.RWMutex
+	// mu sync.RWMutex
 	// shutCh   chan bool
 	nodePool NodePool
 	leader   int64
@@ -31,35 +31,6 @@ func MakeKvShard(nodesInfo []NodeInfo) *kvShard {
 	// go shard.monitor()
 	return &shard
 }
-
-// func (shard *kvShard) updateLeader() {
-// 	shard.mu.Lock()
-// 	defer shard.mu.Unlock()
-// 	index := rand.Intn(len(shard.nodes))
-// 	for i := 0; i < len(shard.nodes); i++ {
-// 		idx := (i + index) % len(shard.nodes)
-// 		if shard.nodes[idx].IsLeader() {
-// 			shard.leader = idx
-// 			return
-// 		}
-// 	}
-// 	shard.leader = index
-// 	return
-// }
-
-// func (shard *kvShard) monitor() {
-// 	for {
-// 		select {
-// 		case <-shard.shutCh:
-// 			for node := range shard.nodes {
-// 				node.Kill()
-// 			}
-// 			return
-// 		case <-time.After(time.Second * 10):
-// 			shard.updateLeader()
-// 		}
-// 	}
-// }
 
 func (shard *kvShard) Get(
 	ctx context.Context,
@@ -91,12 +62,11 @@ func (shard *kvShard) Set(
 	for i := 0; i < shard.nodePool.Size(); i++ {
 		idx := (leader + int64(i)) % int64(shard.nodePool.Size())
 		client, err := shard.nodePool.GetClient(int(idx))
-		// logrus.Println(err, idx)
 		if err == nil {
 			res, err = client.Set(ctx, request)
-			logrus.Println(err)
 			if err == nil {
 				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)
+				logrus.Println("Leader: ", leader)
 				return res, nil
 			} else if e, ok := status.FromError(err); ok && e.Code() != NotLeader { // is leader
 				atomic.CompareAndSwapInt64(&shard.leader, leader, idx)

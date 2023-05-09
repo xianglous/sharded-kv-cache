@@ -74,9 +74,6 @@ func startRaft(shardState *kv.ShardState, dirname string) {
 				}
 			}
 			shardState.Nodes[i].Port = int32(lis.Addr().(*net.TCPAddr).Port)
-			wg2.Add(1)
-			wg1.Done()
-			wg1.Wait()
 			endnames[i] = make([]string, len(shardState.Nodes))
 			for j := 0; j < len(shardState.Nodes); j++ {
 				endnames[i][j] = randstring(20)
@@ -98,6 +95,14 @@ func startRaft(shardState *kv.ShardState, dirname string) {
 			srv := labrpc.MakeServer()
 			srv.AddService(svc)
 			network.AddServer(i, srv)
+			wg2.Add(1)
+			wg1.Done()
+			wg1.Wait()
+
+			for j := 0; j < len(shardState.Nodes); j++ {
+				network.Enable(endnames[i][j], true)
+				network.Enable(endnames[j][i], true)
+			}
 			logrus.Printf("Node: %d listening at Port: %d", i, shardState.Nodes[i].Port)
 			wg2.Done()
 			if err := server.Serve(lis); err != nil {
