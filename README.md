@@ -64,4 +64,4 @@ We can see that the performance is not desirable. The problem may be caused by l
 
 Another problem is not being able to run gRPC for Raft is another drawback for our implementation. We used the similar labrpc from lab3 for Raft internel communication because we did not have enough time to implement another gRPC protocol.
 
-[Demo]("https://drive.google.com/file/d/1qprDM6bBY6_jHGAGTEahu4dbIvXNUXhB/view?usp=sharing")
+[Demo](https://drive.google.com/file/d/1qprDM6bBY6_jHGAGTEahu4dbIvXNUXhB/view?usp=sharing)
